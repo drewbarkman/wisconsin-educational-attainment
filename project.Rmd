@@ -1,0 +1,187 @@
+---
+title: Median Household Income Based on Educational Attainment in Wisconsin
+author: Quinn Filbin, Drew Barkman, Elia Macasaet, Laksyha Gupta
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,fig.width=5,fig.height=4,fig.align="center")
+
+library(tidyverse)
+theme_set(theme_bw())
+options(ggplot2.discrete.fill = \(...) scale_fill_brewer(..., palette = "Set2"),
+        ggplot2.discrete.colour = \(...) scale_color_brewer(..., palette = "Dark2"))
+
+
+median_income_raw = read_csv("nhgis0007_ds267_20235_county.csv", skip = 1)
+education_level_raw = read_csv("nhgis0008_ds267_20235_county.csv", skip = 1)
+
+median_income_clean = median_income_raw %>% 
+  select("County Name", "Estimates: Median household income in the past 12 months (in 2023 inflation-adjusted dollars)") %>% 
+  rename("county" = "County Name",
+         "median_household_income" = "Estimates: Median household income in the past 12 months (in 2023 inflation-adjusted dollars)")
+
+education_level_clean = education_level_raw %>%
+  mutate(
+    num_bachelors = `Estimates: Bachelor's degree` + `Estimates: Master's degree` + `Estimates: Professional school degree` + `Estimates: Doctorate degree`,
+    pct_bachelors = num_bachelors / `Estimates: Total`
+  ) %>%
+  rename("county" = "County Name", "total_pop" = "Estimates: Total") %>%
+  select(county, pct_bachelors, num_bachelors, total_pop)
+
+df = full_join(median_income_clean, education_level_clean, by = "county")
+```
+
+# Introduction
+
+Educational attainment is one of the most often discussed predictors of economic success, yet the strength of this relationship can vary greatly across communities. Understanding whether counties with more highly educated populations also tend to have higher overall household incomes can offer insight into broader patterns of community values, regional development, and the economic value of higher education. In Wisconsin, counties differ widely in economic structure, population density, and access to higher education, making this state a meaningful setting for this analysis. 
+
+Specifically, this report aims to address the following question: 
+
+Does the percentage of adults in a county with a bachelor’s degree or higher predict the county’s median household income? 
+
+Our report shows evidence that Wisconsin counties with higher levels of educational attainment will, on average, have higher median household incomes.
+
+
+# Background
+## Dataset Overview
+The data used in this report was collected as part of the U.S. Census Bureau’s American Community Survey (ACS), an ongoing survey that collects social, economic, and housing information. This information is used by communities, businesses, and the state and federal government to make decisions about the coming year. The 5-year estimates (2019-2023) were chosen for this report as they are the most reliable dataset available for county-level research, especially when it comes to smaller or rural communities, where 1-year estimates may be less reliable due to large sampling variability. We combined two data sets[^1], one with information on median household income, and another with the highest level of educational attainment, to create a merged dataset where each row represents a Wisconsin county.
+
+### Key Variables
+- County (72 counties in Wisconsin)
+- Median Household Income 
+- Educational Attainment (percentage of county residents aged 25+ with a bachelor’s degree or higher)
+
+## Why Wisconsin?
+Wisconsin makes for a relevant case study as it contains meaningful variation over several factors:
+
+- Urban vs. Rural differences
+- Variation in Industry (manufacturing, agriculture, research, healthcare)
+- Wide range of socioeconomic conditions 
+
+## Factors Interpreting Results
+
+### Five-Year Estimate
+The ACS results used in this report reflect a five-year average. This means they smooth out short-term fluctuations in median income or educational attainment over the five-year time frame, masking sudden changes.
+
+### Correlation vs. Causation 
+This analysis identifies correlation, not causation. A strong relationship between education and income does not necessarily mean that higher education causes higher income. Median household income is influenced by many factors, including: 
+
+- County Industry
+- Cost of Living
+- Demographics (Age, Household Composition, Race, Gender)
+- Job Market
+- Government Policies (Minimum Wage, Tax Policies)
+- Inflation
+
+These factors are not included in our model, but may help explain the remaining variation.
+
+## Report Overview 
+
+In the rest of this report, we will summarize the distributions of educational attainment and median household income across counties using numerical and graphical methods. We will construct a scatterplot of median household income versus the percent of adults with at least a bachelor's degree and overlay a fitted regression line to visualize the trend. We will then perform a simple linear regression test to determine whether educational attainment significantly predicts median household income at the county level. 
+
+To find if this relationship is statistically significant, we will test an alternative hypothesis against the null hypothesis.
+
+The null hypothesis is that the true slope of the line of best fit is equal to zero, or
+$$
+H_{0}: \beta_{1} = 0
+$$
+And our alternative hypothesis is that the true slope of the line of best fit is not equal to zero, or 
+$$
+H_{a}: \beta_{1} ≠ 0
+$$
+
+## Models and Graphing
+
+When determining if using linear regression on a data set is appropriate, we must first confirm that the data is linear in appearance. In the graph below, we can confirm that the data does appear to be linear, so we may proceed with regression.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Graph
+
+library("scales")
+
+
+ggplot(df, aes(x = pct_bachelors, y = median_household_income)) + 
+  geom_point() + 
+  scale_x_continuous(labels = comma) + 
+  scale_y_continuous(labels = comma) +
+  labs(x = "Percent of County with Bachelors Degree", y = "Median Household Income",
+       title = "Percent of Population with Bachelors Degree vs Median Household Income") + geom_smooth(method = lm, se = FALSE) + theme(plot.title = element_text(size = 9))
+```
+
+Using R's built-in LM function, we are able to generate a summary of almost all of the crucial information we need to determine the effects the percentage of the population with at least a bachelor's degree has on the median household income of a county.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#Multiplying to get consistent results
+df$pct_bachelors = df$pct_bachelors * 100
+
+
+#Linear Model of income(Y) vs % With a Degree(X)
+fit = lm(median_household_income ~ pct_bachelors, data = df)
+summary(fit)
+```
+
+A key component of this summary is the Pr(>|t|) portion of the pct_bachelors row. This signifies the p-value of the relationship between the percent of the county population with at least a bachelor’s degree, and the median household income of the county. Our results gave us a p-value of 1.68e-12. When using a standard significance level of 0.05, we see that our p-value is well below this value, indicating that there is enough statistical significance to reject the null hypothesis, meaning the percentage of the county population with bachelor's degrees or higher correlates with the median household income.
+
+A shortcoming of this data is the R-squared value of 0.5047, which indicates that 50.47% of the variation in the data can be explained by the percentage of people with at least a bachelor’s degree. While this isn't ideal, it does not rule out the use of a linear model.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include = FALSE}
+
+#Making a prediction based on the linear regression model
+estimatePercent = data.frame(pct_bachelors = 45)
+predict(fit, newdata = estimatePercent)
+```
+Another way to verify model correctness is to analyze both residual plots and QQ plots. Together, these graphs show how closely the data fits a linear relationship as well as how closely the data fits the normal model.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#Should be scattered
+plot(fit, 1)
+```
+
+The residual plot above shows a relatively random distribution of the data. Although we see the lower fitted value tends to be more clumped, and the higher fitted values tend to be more spread out, which can be an indicator of inaccuracy.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+#Should be linear
+plot(fit, 2)
+```
+The QQ plot shows a mostly linear trend, indicating the data follows a normal distribution.
+
+Based on the results of these tests, we can verify that the linear model is appropriate for this data set, and the assumptions of the model are valid. This is due to our extremely low p-value, acceptable R-squared value, and strong QQ and residual vs. fitted plots.
+
+
+# Discussion
+
+## Interpretations of Analysis
+
+Our analysis investigated whether the percentage of adults in a Wisconsin county with at least a bachelor’s degree predicts the county’s median household income. The linear regression model revealed a positive relationship: counties with a higher percentage of bachelor’s degree holders are more likely to have higher median incomes. The regression output showed a p-value below the 0.05 threshold, providing enough evidence to reject the null hypothesis $H_{0}: \beta_{1} = 0$, indicating that getting an educational degree is associated with income levels.
+
+The R-squared value of around 0.5047 suggests that about 50.5% of the variation in median household income can be explained by differences in getting an educational degree across counties. This signals that income is influenced by many other factors not included in the model.
+
+Together, the p-value and R-squared value indicate the important role that education plays in shaping economic outcomes at the county level.
+
+## Primary Conclusions
+
+The regression results support the conclusion that higher educational attainment correlates with higher median household income in Wisconsin counties. Even with a simple model, the relationship is statistically significant.
+
+However, the model does not account for the remaining ~49.5% of income variation, which is likely influenced by factors such as employment opportunities, industry composition, geographic characteristics, urban-rural divides, and demographic trends. Therefore, education should be understood as one important predictor among many.
+
+## Shortcomings and Limitations
+
+- Geographic Restriction: Our data include only counties from Wisconsin. Results may or may not be similar for other states or match national patterns.
+- Sample Size: Wisconsin has 72 counties, which is relatively small for regression modeling. This limits the precision of our estimates and may lead to errors.
+- Use of Aggregated Data: County-level summaries hide within-county variation. Differing population distributions could affect these results.
+
+## Future Questions, Directions, and Methods
+
+For future purposes, there are several domains that can be explored. First, the current analysis could be strengthened by applying more advanced inferential methods, such as comparing multiple demographic groups or testing interaction effects between variables (e.g., age and gender, exercise and diet habits). Additionally, while we relied primarily on hypothesis testing, future work could incorporate Bayesian inference to quantify uncertainty more flexibly.
+
+Another direction is expanding the dataset, either by collecting repeated measurements over time (longitudinal data) or by integrating external datasets to validate our findings. This would also allow the use of more robust statistical modeling techniques, such as linear mixed models or generalized additive models.
+
+Finally, implementing predictive modeling methods (e.g., logistic regression, random forests, or gradient boosting) could help identify which variables most strongly influence the outcomes of interest. Cross-validation and out-of-sample testing would ensure these models generalize well. Combining these approaches would provide a more comprehensive understanding and strengthen the reliability of future conclusions.
+
+# References
+
+[^1]: Jonathan Schroeder, David Van Riper, Steven Manson, Katherine Knowles, Tracy Kugler, Finn Roberts, and Steven Ruggles. IPUMS National Historical Geographic Information System: Version 20.0 [dataset]. Minneapolis, MN: IPUMS. 2025. http://doi.org/10.18128/D050.V20.0
